@@ -33,11 +33,30 @@ struct ProcessorConfig {
 };
 
 struct ROBEntry {
-    // valid bit, ready bit, architectural register ID
-    // other fields as required
+    bool valid_flag = false;
+    bool ready_flag = false;
+    OpCode op_code = OpCode::ADD;
+    int instruction_pc = 0;
+    int destination_register = -1;
+    int output_value = 0;
+    bool exception_flag = false;
+    int predicted_address = -1;
+    int next_address = 0;
+    int memory_address = -1;
+    int store_value = 0;
 };
 
 struct RSEntry {
-    // value, tag, ready ... for both operands
-    // other fields as required
+    bool valid_flag = false;
+    OpCode op_code = OpCode::ADD;
+    int inp1_value = 0;
+    int inp1_tag = -1;
+    bool inp1_ready = false;
+    int inp2_value = 0;
+    int inp2_tag = -1;
+    bool inp2_ready = false;
+    int destination_tag = -1;
+    int immediate_value = 0;
+    int sequence_number = 0;
+    int pc_address = 0;
 };
