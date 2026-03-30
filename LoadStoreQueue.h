@@ -8,6 +8,8 @@ class LoadStoreQueue {
 public:
     // LSQ reservation station
     int latency;
+
+    std::vector<RSEntry> rs;
     
     bool has_result = false; // result flag
     bool has_exception = false; // exception flag

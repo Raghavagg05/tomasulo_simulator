@@ -23,6 +23,9 @@ public:
     bool exception = false; // exception bit
 
     // register alias table / reorder buffer
+    std::vector<ROBEntry> ROB;
+    int rob_head, rob_tail, rob_count;
+    std::vector<int> RAT;
 
     std::vector<ExecutionUnit> units;
     LoadStoreQueue* lsq;
@@ -35,12 +38,46 @@ public:
         Memory.resize(config.mem_size);
 
         // Instantiate Hardware Units
-        // Adder
-        // Multiplier
-        // Divider
-        // Branch Computation
-        // Bitwise Logic
-        // Load-Store Unit
+
+        ExecutionUnit adder;
+        adder.name = UnitType::ADDER;
+        adder.latency = config.add_lat;
+        adder.rs.resize(config.adder_rs_size);
+        units.push_back(adder);
+
+        ExecutionUnit multiplier;
+        multiplier.name = UnitType::MULTIPLIER;
+        multiplier.latency = config.mul_lat;
+        multiplier.rs.resize(config.mult_rs_size);
+        units.push_back(multiplier);
+
+        ExecutionUnit divider;
+        divider.name = UnitType::DIVIDER;
+        divider.latency = config.div_lat;
+        divider.rs.resize(config.div_rs_size);
+        units.push_back(divider);
+
+        ExecutionUnit branch;
+        branch.name = UnitType::BRANCH;
+        branch.latency = config.logic_lat;
+        branch.rs.resize(config.br_rs_size);
+        units.push_back(branch);
+        
+        ExecutionUnit logic;
+        logic.name = UnitType::LOGIC;
+        logic.latency = config.logic_lat;
+        logic.rs.resize(config.logic_rs_size);
+        units.push_back(logic);
+
+        lsq = new LoadStoreQueue();
+        lsq->latency = config.mem_lat;
+        lsq->rs.resize(config.lsq_rs_size);
+
+        ROB.resize(config.rob_size);
+        rob_head = 0;
+        rob_tail = 0;
+        rob_count = 0;
+        RAT.resize(config.num_regs, -1);
     }
 
     std::vector<std::string> helper_split(std::string s){

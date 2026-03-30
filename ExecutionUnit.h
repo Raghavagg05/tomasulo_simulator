@@ -9,6 +9,8 @@ public:
     // per-unit reservation station
     UnitType name;
     int latency;
+
+    std::vector<RSEntry> rs;
     
     bool has_result = false; // result flag
     bool has_exception = false; // exception flag
