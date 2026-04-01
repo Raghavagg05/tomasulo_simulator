@@ -2,6 +2,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <map>
 #include <iomanip>
 #include "Basics.h"
 #include "BranchPredictor.h"
@@ -14,6 +15,13 @@ public:
     int clock_cycle;
 
     // pipeline registers
+
+
+    Instruction fetch_buffer;
+    // checks if there is something in the buffer
+    bool fetch_valid = false; 
+    bool fetch_stalled = false;
+    int predicted_pc = 0;
 
     std::vector<Instruction> inst_memory;
 
@@ -28,6 +36,7 @@ public:
     std::vector<int> RAT;
 
     std::vector<ExecutionUnit> units;
+    std::map<UnitType,int> exe_units_order;
     LoadStoreQueue* lsq;
     BranchPredictor bp;
 
@@ -44,30 +53,35 @@ public:
         adder.latency = config.add_lat;
         adder.rs.resize(config.adder_rs_size);
         units.push_back(adder);
+        exe_units_order[UnitType::ADDER] = 0;
 
         ExecutionUnit multiplier;
         multiplier.name = UnitType::MULTIPLIER;
         multiplier.latency = config.mul_lat;
         multiplier.rs.resize(config.mult_rs_size);
         units.push_back(multiplier);
+        exe_units_order[UnitType::MULTIPLIER] = 1;
 
         ExecutionUnit divider;
         divider.name = UnitType::DIVIDER;
         divider.latency = config.div_lat;
         divider.rs.resize(config.div_rs_size);
         units.push_back(divider);
+        exe_units_order[UnitType::DIVIDER] = 2;
 
         ExecutionUnit branch;
         branch.name = UnitType::BRANCH;
         branch.latency = config.logic_lat;
         branch.rs.resize(config.br_rs_size);
         units.push_back(branch);
+        exe_units_order[UnitType::BRANCH] = 3;
         
         ExecutionUnit logic;
         logic.name = UnitType::LOGIC;
         logic.latency = config.logic_lat;
         logic.rs.resize(config.logic_rs_size);
         units.push_back(logic);
+        exe_units_order[UnitType::LOGIC] = 4;
 
         lsq = new LoadStoreQueue();
         lsq->latency = config.mem_lat;
@@ -188,9 +202,129 @@ public:
 
     void broadcastOnCDB() {};
 
-    void stageFetch() {};
+    void stageFetch() {
+        if(fetch_stalled || pc >= (int)inst_memory.size() || fetch_valid)return;
+        Instruction current = inst_memory[pc];
+        if(current.op == OpCode::J)predicted_pc = pc + current.imm;
+        else if(current.op == OpCode::BEQ || current.op == OpCode::BNE || current.op == OpCode::BLT || current.op == OpCode::BLE){
+            predicted_pc = bp.predict(pc, current.imm, current.op);
+        }
+        else predicted_pc = pc + 1;
+        pc = predicted_pc;
+        fetch_buffer = current;
+        fetch_valid = true;
+    };
 
-    void stageDecode() {};
+    UnitType getUnitType(OpCode op) {
+        if(op == OpCode::ADD || op == OpCode::SUB || op == OpCode::ADDI || op == OpCode::SLT || op == OpCode::SLTI) return UnitType::ADDER;
+        else if(op == OpCode::MUL) return UnitType::MULTIPLIER;
+        else if(op == OpCode::DIV || op == OpCode::REM) return UnitType::DIVIDER;
+        else if(op == OpCode::AND || op == OpCode::OR || op == OpCode::XOR || op == OpCode::ANDI || op == OpCode::ORI || op == OpCode::XORI) return UnitType::LOGIC;
+        else if(op == OpCode::BEQ || op == OpCode::BNE || op == OpCode::BLT || op == OpCode::BLE) return UnitType::BRANCH;
+        else if(op == OpCode::LW || op == OpCode::SW) return UnitType::LOADSTORE;
+    }
+
+    int check_rs_free_slot(int unit_index){
+        int free_rs = -1;
+        for (int i = 0; i < units[unit_index].rs.size(); i++) {
+            if (!units[unit_index].rs[i].valid_flag) {
+                free_rs = i;
+                break;
+            }
+        }
+        return free_rs;
+    }
+
+    void stageDecode() {
+        if(!fetch_valid || rob_count>= (int)ROB.size())return;
+        
+        int free_rs = -1;
+        int rs_ind = -1;
+
+        if (fetch_buffer.op == OpCode::J) {}
+        else if (fetch_buffer.op == OpCode::LW || fetch_buffer.op == OpCode::SW) {
+            for (int i = 0; i < (int)lsq->rs.size(); i++) {
+                if (!lsq->rs[i].valid_flag) { free_rs = i; break; }
+            }
+            if (free_rs == -1) { fetch_stalled = true; return; }
+        } else {
+            rs_ind = exe_units_order[getUnitType(fetch_buffer.op)];
+            free_rs = check_rs_free_slot(rs_ind);
+            if (free_rs == -1) { fetch_stalled = true; return; }
+        }
+
+        int rob_index = rob_tail;
+        ROB[rob_index].valid_flag = true;
+        ROB[rob_index].op_code = fetch_buffer.op;
+        ROB[rob_index].instruction_pc = fetch_buffer.pc;
+        ROB[rob_index].destination_register = fetch_buffer.dest;
+        ROB[rob_index].predicted_address = predicted_pc; 
+
+        rob_tail = (rob_tail + 1) % ROB.size();
+        rob_count++;
+
+        if(fetch_buffer.op==OpCode::J){
+            ROB[rob_index].ready_flag = true;
+            fetch_valid = false;
+            fetch_stalled = false;
+            return;
+        }
+
+        RSEntry* rs_entry;
+
+        if(fetch_buffer.op==OpCode::LW || fetch_buffer.op==OpCode::SW)rs_entry = &lsq->rs[free_rs];
+        else rs_entry = &units[rs_ind].rs[free_rs];
+
+        rs_entry->valid_flag = true;
+        rs_entry->op_code = fetch_buffer.op;
+        rs_entry->destination_tag = rob_index;
+        rs_entry->immediate_value = fetch_buffer.imm;
+        rs_entry->sequence_number = clock_cycle;  
+        rs_entry->pc_address = fetch_buffer.pc;
+
+        int src1 = fetch_buffer.src1;
+        if(RAT[src1] == -1){
+            rs_entry->inp1_value = ARF[src1];
+            rs_entry->inp1_ready = true;
+        }
+        else{
+            int tag = RAT[src1];
+            if(ROB[tag].ready_flag == true){
+                rs_entry->inp1_value = ROB[tag].output_value;
+                rs_entry->inp1_ready = true;
+            }
+            else{
+                rs_entry->inp1_tag = tag;
+                rs_entry->inp1_ready = false;
+            }
+        }
+
+        if(fetch_buffer.op==OpCode::ADDI || fetch_buffer.op==OpCode::SLTI || fetch_buffer.op==OpCode::ANDI || fetch_buffer.op==OpCode::ORI || fetch_buffer.op==OpCode::XORI || fetch_buffer.op==OpCode::LW){
+            rs_entry->inp2_value = fetch_buffer.imm;
+            rs_entry->inp2_ready = true;
+        }
+        else{
+            int src2 = fetch_buffer.src2;
+            if(RAT[src2] == -1){
+                rs_entry->inp2_value = ARF[src2];
+                rs_entry->inp2_ready = true;
+            }
+            else{
+                int tag = RAT[src2];
+                if(ROB[tag].ready_flag == true){
+                    rs_entry->inp2_value = ROB[tag].output_value;
+                    rs_entry->inp2_ready = true;
+                }
+                else{
+                    rs_entry->inp2_tag = tag;
+                    rs_entry->inp2_ready = false;
+                }
+            }
+        }
+        if(fetch_buffer.dest>0)RAT[fetch_buffer.dest] = rob_index;
+        fetch_valid = false;
+        fetch_stalled = false;
+    };
 
     void stageExecuteAndBroadcast() {};
 
