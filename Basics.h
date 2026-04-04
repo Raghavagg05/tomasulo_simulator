@@ -5,12 +5,12 @@ enum class OpCode { ADD, SUB, ADDI, MUL, DIV, REM, LW, SW, BEQ, BNE, BLT, BLE, J
 enum class UnitType { ADDER, MULTIPLIER, DIVIDER, LOADSTORE, BRANCH, LOGIC };
 
 struct Instruction {
-    OpCode op;
-    int dest;
-    int src1;
-    int src2;
-    int imm;
-    int pc;
+    OpCode op = OpCode::ADD;
+    int dest = 0;
+    int src1 = 0;
+    int src2 = 0;
+    int imm = 0;
+    int pc = 0;
 };
 
 struct ProcessorConfig {
@@ -59,4 +59,14 @@ struct RSEntry {
     int immediate_value = 0;
     int sequence_number = 0;
     int pc_address = 0;
+    bool is_executing = false;
+    int rem_cycles = 0;
+};
+
+struct ExecutionResult {
+    int tag;
+    int value;
+    bool exception;
+    int mem_address = -1; // Added for LSQ
+    int store_data = 0;   // Added for LSQ
 };

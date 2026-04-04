@@ -10,7 +10,7 @@ CXXFLAGS = -std=c++17 -Wall
 # and will have its own main() function.
 compile:
 	@echo "Compiling simulator:"
-	$(CXX) $(CXXFLAGS) $(FILE) -o main
+	$(CXX) $(CXXFLAGS) Processor.cpp ExecutionUnit.cpp LoadStoreQueue.cpp $(FILE) -o main
 	@echo "Build successful, 'main' created."
 
 # ==========================================
@@ -18,8 +18,7 @@ compile:
 # ==========================================
 # Update this target to run whatever script or 
 # program you wrote to preprocess the assembly labels. 
-# Example below assumes a Python script named 'compiler.py'.
 run:
 	@echo "Preprocessing $(FILE)..."
-	python3 compiler.py $(FILE)
+	python3 Compiler.py $(FILE)
 	@echo "Preprocessing complete."

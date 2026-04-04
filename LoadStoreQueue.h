@@ -11,10 +11,8 @@ public:
 
     std::vector<RSEntry> rs;
     
-    bool has_result = false; // result flag
-    bool has_exception = false; // exception flag
-    int store_data = 0;
-    
-    void capture(int tag, int val) {};
-    void executeCycle(std::vector<int>& Memory) {};
+    std::vector<ExecutionResult> completed_results;
+
+    void capture(int tag, int val);
+    void executeCycle(std::vector<int>& Memory, std::vector<ROBEntry>& ROB, int rob_head);
 };

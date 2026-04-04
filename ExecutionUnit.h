@@ -11,9 +11,9 @@ public:
     int latency;
 
     std::vector<RSEntry> rs;
-    bool has_result = false; // result flag
-    bool has_exception = false; // exception flag
+    // Vector to hold completed results waiting to be broadcast
+    std::vector<ExecutionResult> completed_results;
     
-    void capture(int tag, int val) {};
-    void executeCycle() {};
+    void capture(int tag, int val);
+    void executeCycle();
 };
