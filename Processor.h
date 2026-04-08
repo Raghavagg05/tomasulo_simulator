@@ -40,6 +40,14 @@ public:
     LoadStoreQueue* lsq;
     BranchPredictor bp;
 
+    
+    // Snapshots taken at the START of each cycle (before any stage runs).
+    // stageDecode uses these instead of live values so that RS/ROB slots
+    // freed by Execute or Commit in the same cycle are NOT visible to Decode
+    int rob_count_snapshot;
+    std::vector<int> rs_free_slot_snapshot; // index of first free RS slot
+    int lsq_free_slot_snapshot;             // index of first free LSQ slot 
+
     Processor(ProcessorConfig& config);
 
     std::vector<std::string> helper_split(std::string s);

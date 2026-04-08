@@ -202,20 +202,18 @@ int Processor::check_rs_free_slot(int unit_index){
 }
 
 void Processor::stageDecode() {
-    if(!fetch_valid || rob_count>= (int)ROB.size())return;
+    if(!fetch_valid || rob_count_snapshot >= (int)ROB.size())return;
     
     int free_rs = -1;
     int rs_ind = -1;
 
     if (fetch_buffer.op == OpCode::J) {}
     else if (fetch_buffer.op == OpCode::LW || fetch_buffer.op == OpCode::SW) {
-        for (int i = 0; i < (int)lsq->rs.size(); i++) {
-            if (!lsq->rs[i].valid_flag) { free_rs = i; break; }
-        }
+        free_rs = lsq_free_slot_snapshot;
         if (free_rs == -1) { fetch_stalled = true; return; }
     } else {
         rs_ind = exe_units_order[getUnitType(fetch_buffer.op)];
-        free_rs = check_rs_free_slot(rs_ind);
+        free_rs = rs_free_slot_snapshot[rs_ind];
         if (free_rs == -1) { fetch_stalled = true; return; }
     }
 
@@ -442,9 +440,28 @@ void Processor::flush() {
 }
 
 bool Processor::step() {
+    // stageDecode will use snapshots instead of live state so that slots freed by in the same cycle are not visible to Decode
+    rob_count_snapshot = rob_count;
+
+    rs_free_slot_snapshot.assign(units.size(), -1);
+    for (size_t i = 0; i < units.size(); i++) {
+        for (size_t j = 0; j < units[i].rs.size(); j++) {
+            if (!units[i].rs[j].valid_flag) {
+                rs_free_slot_snapshot[i] = (int)j;
+                break;
+            }
+        }
+    }
+    lsq_free_slot_snapshot = -1;
+    for (size_t i = 0; i < lsq->rs.size(); i++) {
+        if (!lsq->rs[i].valid_flag) {
+            lsq_free_slot_snapshot = (int)i;
+            break;
+        }
+    }
+
     // Record the PC before commit to detect if a flush happens
     int pc_before_commit = pc;
-    // Run pipeline stages in reverse to simulate cycle-boundary latching
     stageCommit();
     stageExecuteAndBroadcast();
     stageDecode();
@@ -454,13 +471,12 @@ bool Processor::step() {
 
     clock_cycle++;
 
-    //  Termination Condition A: An exception was raised
+    //  Termination in case of exception
     if (exception) {
         return false;
     }
 
-    // Termination Condition B: Program is completely finished
-    // (No more instructions to fetch AND nothing waiting in the fetch buffer AND the ROB is totally empty)
+    // Termination if program is completely finished
     if (pc >= (int)inst_memory.size() && fetch_valid == false && rob_count == 0) {
         return false; 
     }
